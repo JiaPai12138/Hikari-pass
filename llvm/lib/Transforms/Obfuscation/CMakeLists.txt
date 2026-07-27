@@ -1,5 +1,4 @@
-add_llvm_library(LLVMObfuscation
-  CryptoUtils.cpp
+add_llvm_component_library(LLVMObfuscation
   Utils.cpp
   ObfuscationPassManager.cpp
   ObfuscationOptions.cpp
@@ -12,13 +11,20 @@ add_llvm_library(LLVMObfuscation
   ConstantIntEncryption.cpp
   ConstantFPEncryption.cpp
   MicrosoftRTTIEraser.cpp
-  SplitBasicBlock.cpp
-
+  
+  COMPONENT_NAME
+  Obfuscation
+  
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms/Obfuscation
-
+  
   DEPENDS
-  LLVMLinker
-  )
+  intrinsics_gen
 
-add_dependencies(LLVMObfuscation intrinsics_gen LLVMLinker)
+  LINK_COMPONENTS
+  Core
+  Support
+  TargetParser
+  TransformUtils
+  Linker
+  )

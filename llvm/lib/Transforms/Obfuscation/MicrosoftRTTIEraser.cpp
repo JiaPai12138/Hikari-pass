@@ -1,5 +1,5 @@
 #include "llvm/Transforms/Obfuscation/ObfuscationOptions.h"
-#include "llvm/Transforms/Obfuscation/StringEncryption.h"
+#include "llvm/Transforms/Obfuscation/MicrosoftRTTIEraser.h"
 #include "llvm/Transforms/Obfuscation/Utils.h"
 #include "llvm/Transforms/Utils/GlobalStatus.h"
 #include "llvm/Transforms/IPO/Attributor.h"
@@ -9,9 +9,8 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/CryptoUtils.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/Transforms/Obfuscation/MicrosoftRTTIEraser.h"
+#include "llvm/Support/BLAKE3.h"
 
 #define DEBUG_TYPE "ms_rtti_eraser"
 
@@ -22,14 +21,14 @@ namespace {
 class MsRttiEraser : public ModulePass {
 protected:
   ObfuscationOptions *ArgsOptions;
-  CryptoUtils         RandomEngine;
+  llvm::BLAKE3        Blake3;
 
 public:
   static char ID;
 
   MsRttiEraser(ObfuscationOptions *argsOptions) : ModulePass(ID) {
     this->ArgsOptions = argsOptions;
-    initializeStringEncryptionPass(*PassRegistry::getPassRegistry());
+    initializeMsRttiEraserPass(*PassRegistry::getPassRegistry());
   }
 
   StringRef getPassName() const override {
@@ -73,7 +72,12 @@ public:
       Constant *newRttiNameConstant = ConstantDataArray::getString(
           ctx, newRttiName, newRttiName[newRttiName.size() - 1] != '\0');
 
-      initStruct->setOperand(2, newRttiNameConstant);
+      SmallVector<Constant *, 4> Ops;
+      for (unsigned k = 0; k < initStruct->getNumOperands(); ++k)
+        Ops.push_back(initStruct->getOperand(k));
+      Ops[2] = newRttiNameConstant;
+      gv.setInitializer(ConstantStruct::get(initStruct->getType(), Ops));
+
       changed = true;
     }
     return changed;
@@ -87,12 +91,13 @@ public:
     SmallString<512> passwd;
     passwd.append(ArgsOptions->randomSeed());
     passwd.append(rtti);
-    uint8_t hash[32];
-    RandomEngine.sha256(passwd.c_str(), hash);
+    Blake3.init();
+    Blake3.update(passwd);
+    const auto hash = Blake3.final();
 
     SmallString<256> result = rtti;
 
-    for (int i = 4; i < result.size(); ++i) {
+    for (size_t i = 4; i < result.size(); ++i) {
       const char currentChar = result[i];
       if (currentChar == '\0') {
         break;
@@ -101,7 +106,8 @@ public:
           currentChar == '$') {
         continue;
       }
-      result[i] = pwTable[(currentChar ^ hash[i % sizeof(hash)]) % (sizeof(pwTable) - 1)];
+      result[i] = pwTable[(currentChar ^ hash[i % sizeof(hash)]) % (
+                            sizeof(pwTable) - 1)];
     }
     return result;
   }

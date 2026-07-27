@@ -4,12 +4,13 @@
 #include "llvm/Transforms/Obfuscation/ObfuscationOptions.h"
 #include "llvm/Transforms/Obfuscation/Utils.h"
 #include "llvm/Transforms/Obfuscation/SplitBasicBlock.h"
-#include "llvm/CryptoUtils.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/RandomNumberGenerator.h"
 
 #include <vector>
 #include <algorithm>
+#include <random>
 
 #define DEBUG_TYPE "split"
 
@@ -20,11 +21,19 @@ namespace {
 struct SplitBasicBlock : public FunctionPass {
   static char ID;
   ObfuscationOptions *ArgsOptions;
-  CryptoUtils RandomEngine;
+  std::mt19937_64 RNG;
   bool Changed = false;
 
   SplitBasicBlock(ObfuscationOptions *argsOptions)
-    : FunctionPass(ID), ArgsOptions(argsOptions) {}
+    : FunctionPass(ID), ArgsOptions(argsOptions) {
+    uint64_t seed = 0;
+    if (auto errorCode = llvm::getRandomBytes(&seed, sizeof(seed))) {
+      llvm::report_fatal_error(
+          StringRef("Failed to get random bytes for basic block split") +
+          errorCode.message());
+    }
+    RNG = std::mt19937_64(seed);
+  }
 
   StringRef getPassName() const override { return "SplitBasicBlock"; }
 
@@ -85,7 +94,7 @@ struct SplitBasicBlock : public FunctionPass {
   void shuffle(std::vector<int> &vec) {
     int n = vec.size();
     for (int i = n - 1; i > 0; --i)
-      std::swap(vec[i], vec[RandomEngine.get_uint32_t() % (i + 1)]);
+      std::swap(vec[i], vec[RNG() % (i + 1)]);
   }
 };
 
