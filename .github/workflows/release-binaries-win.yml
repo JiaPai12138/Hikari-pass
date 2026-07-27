@@ -36,7 +36,7 @@ jobs:
         id: get_tag
         shell: pwsh
         run: |
-          $tagsJson = Invoke-RestMethod -Uri "https://api.github.com/repos/llvm/llvm-project/tags?per_page=10"
+          $tagsJson = Invoke-RestMethod -Uri "https://api.github.com/repos/llvm/llvm-project/tags?per_page=20"
           $tags = $tagsJson.name
 
           $filtered = $tags | Where-Object { $_ -match '^llvmorg-21' -and $_ -notmatch '-rc' }
